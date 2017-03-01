@@ -109,8 +109,26 @@ data definition for the relevant kind of tokens:
 >   | TDiv
 >   | TLParen
 >   | TRParen
-
-
+>   | TIf
+>   | TThen
+>   | TElse
+>   | TEnd
+>   | TSemi
+>   | TDef
+>   | TAnd
+>   | TOr
+>   | TNot
+>   | TWhile
+>   | TDo
+>   | TEq
+>   | TNeq
+>   | TLt
+>   | TGt
+>   | TLtEq
+>   | TGtEq
+>   | TSkip
+>   | TTrue
+>   | TFalse
 >   deriving (Show, Eq)
 
 
@@ -123,8 +141,28 @@ data definition for the relevant kind of tokens:
 > lexer ('/':s) = TDiv:lexer s
 > lexer ('(':s) = TLParen:lexer s
 > lexer (')':s) = TRParen:lexer s
-
-
+> lexer ('I':'F':next:s) | not $ isAlphaNum next = TIf:(lexer (next:s))
+> lexer ('T':'H':'E':'N':next:s) | not $ isAlphaNum next = TThen:(lexer (next:s))
+> lexer ('E':'L':'S':'E':next:s) | not $ isAlphaNum next = TElse:(lexer (next:s))
+> lexer ('E':'N':'D':next:s) | not $ isAlphaNum next = TEnd:(lexer (next:s))
+> lexer ('E':'N':'D':[]) = [TEnd]
+> lexer (';':s) = TSemi:lexer s
+> lexer (':':'=':s) = TDef:lexer s
+> lexer ('A':'N':'D':next:s) | not $ isAlphaNum next = TAnd:(lexer (next:s))
+> lexer ('O':'R':next:s) | not $ isAlphaNum next = TOr:(lexer (next:s))
+> lexer ('N':'O':'T':next:s) | not $ isAlphaNum next = TNot:(lexer (next:s))
+> lexer ('W':'H':'I':'L':'E':next:s) | not $ isAlphaNum next = TWhile:(lexer (next:s))
+> lexer ('D':'O':next:s) | not $ isAlphaNum next = TDo:(lexer (next:s))
+> lexer ('<':'=':s) = TLtEq:lexer s
+> lexer ('>':'=':s) = TGtEq:lexer s
+> lexer ('=':s) = TEq:lexer s
+> lexer ('!':'=':s) = TNeq:lexer s
+> lexer ('<':s) = TLt:lexer s
+> lexer ('>':s) = TGt:lexer s
+> lexer ('S':'K':'I':'P':next:s) | not $ isAlphaNum next = TSkip:(lexer (next:s))
+> lexer ('S':'K':'I':'P':[]) = [TSkip]
+> lexer ('t':'r':'u':'e':next:s) | not $ isAlphaNum next = TTrue:(lexer (next:s))
+> lexer ('f':'a':'l':'s':'e':next:s) | not $ isAlphaNum next = TFalse:(lexer (next:s))
 > lexer s | isAlpha (head s) =
 >   let (id,s') = span isAlphaNum s in
 >   TId id:lexer s'
@@ -164,6 +202,8 @@ Notice how we just encoded subtraction above! It's just like what we
 did in HW02 with the `translate` function, but we've built it into our
 parser. Adding niceties like this is called *syntactic sugar*.
 
+> test1 = parseATerm $ lexer pascalProg1
+
 > parseATerm'' :: (AExp -> AExp) -> [Token] -> Either String (AExp,[Token])
 > parseATerm'' mk [] = Left $ "expected term after +/-"
 > parseATerm'' mk ts = 
@@ -198,6 +238,82 @@ parser. Adding niceties like this is called *syntactic sugar*.
 >     Right (_,ts) -> Left $ "expected right paren, found: " ++ show ts
 >     Left e -> Left e
 > parseAAtom ts = Left $ "expected numbers or parens, found: " ++ show ts
+>
+> isAExp :: Token -> Bool
+> isAExp (TNum _) = True
+> isAExp (TId _) = True
+> isAExp (TPlus) = True
+> isAExp (TMinus) = True
+> isAExp (TTimes) = True
+> isAExp (TDiv) = True
+> isAExp (TNeg) = True
+> isAExp (TLParen) = True
+> isAExp (TRParen) = True
+> isAExp _ = False
+>
+> parseBTerm :: [Token] -> Either String (BExp,[Token])
+> parseBTerm ts = 
+>   case parseBFactor ts of
+>     Right (f,ts) -> parseBTerm' f ts
+>     Left e -> Left e
+>       
+> parseBTerm' :: BExp -> [Token] -> Either String (BExp,[Token])
+> parseBTerm' lhs [] = Right (lhs, [])
+> parseBTerm' lhs (TOr:ts) = parseBTerm'' (Or lhs) ts
+> parseBTerm' lhs ts = parseBFactor' lhs ts
+>
+> parseBTerm'' :: (BExp -> BExp) -> [Token] -> Either String (BExp,[Token])
+> parseBTerm'' mk [] = Left $ "expected term after OR"
+> parseBTerm'' mk ts = 
+>   case parseBFactor ts of
+>     Right (e,ts) -> parseBTerm' (mk e) ts
+>     Left e -> Left e
+> 
+> parseBFactor :: [Token] -> Either String (BExp,[Token])
+> parseBFactor ts =
+>   case parseBAtom ts of
+>     Right (lhs,ts) -> parseBFactor' lhs ts
+>     Left e -> Left e
+>
+> parseBFactor' :: BExp -> [Token] -> Either String (BExp,[Token])
+> parseBFactor' lhs (TAnd:ts) = parseBFactor'' (And lhs) ts
+> parseBFactor' lhs ts = Right (lhs, ts)
+> 
+> parseBFactor'' :: (BExp -> BExp) -> [Token] -> Either String (BExp,[Token])
+> parseBFactor'' mk [] = Left $ "expected term after AND"
+> parseBFactor'' mk ts = 
+>   case parseBAtom ts of
+>     Right (e,ts) -> parseBFactor' (mk e) ts
+>     Left e -> Left e
+>
+> parseBAtom :: [Token] -> Either String (BExp, [Token])
+> parseBAtom (TTrue:ts) = Right (Bool True, ts)
+> parseBAtom (TFalse:ts) = Right (Bool False, ts)
+> parseBAton tokens | isAExp (head tokens) = 
+>   let (aexpTerms, rest) = span isAExp terms in
+>   case parseATerm aexpTerms of
+>     Right (e, _) =  
+> parseBAtom (TLParen:ts) =
+>   case parseBTerm ts of
+>     Right (e,TRParen:ts') -> Right (e,ts')
+>     Right (_,ts) -> Left $ "expected right paren, found: " ++ show ts
+>     Left e -> Left e
+> parseBAtom ts = Left $ "expected numbers or parens, found: " ++ show ts
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
 
 To test this parser, play with the following "composed" function that
 combines the lexer and parser into one:
