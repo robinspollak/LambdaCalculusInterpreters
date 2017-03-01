@@ -61,35 +61,29 @@ parser. There are two approaches: either take an extra integer
 parameter and use it to determine what "level" you're at, or actually
 write several functions (`showTerm`, `showFactor`, etc.).
 
-
 > instance Show AExp where
->   show (Var var) = var
->   show (Num x) = show x
->   show (Plus x (Neg y)) = showTerm x ++ " - " ++ showTerm y
->   show (Plus x y) = showTerm x ++ " + " ++ showTerm y
->   show (Times x y) = showFactor x ++ " * " ++ showFactor y
->   show (Neg x) = "-" ++ show x
->   show (Div x y) = showFactor x ++ " / " ++ showFactor y
+>   show = showTerm
 >
+> showTerm :: AExp -> [Char]
+> showTerm (Plus x (Neg y)) = showFactor x ++ " - " ++ showFactor y
+> showTerm (Plus x y) = showFactor x ++ " + " ++ showFactor y
+> showTerm x = showFactor x
 >
 > parens' :: [Char] -> [Char]
 > parens' x = "(" ++ x ++ ")"
 >
->
-> showTerm :: AExp -> [Char]
-> showTerm (Times x y) = parens' $ showFactor x ++ " * " ++ showFactor y
-> showTerm (Div x y) = parens' $ showFactor x ++ " * " ++ showFactor y
-> showTerm (Plus x (Neg y)) = parens' $ showTerm x ++ " - " ++ showTerm y
-> showTerm x = show x
->
 > showFactor :: AExp -> [Char]
-> showFactor (Plus x (Neg y)) = parens' $ showTerm x ++ " - " ++ showTerm y
-> showFactor (Plus x y) = parens' $ showTerm x ++ " + " ++ showTerm y
-> showFactor x = show x
+> showFactor (Times x y) = showAtom x ++ " * " ++ showAtom y
+> showFactor (Div x y) = showAtom x ++ " / " ++ showAtom y
+> showFactor x = showAtom x
+>
+> showAtom (Var x) = x
+> showAtom (Num x) = show x
+> showAtom (Neg (Num x)) = "-" ++ show x
+> showAtom x = parens' $ showTerm x
 >
 > fivethreetwo = Plus (Num 5) (Plus (Neg (Num 3)) (Neg (Num 2)))
 > garbage = Div (Times (Num 2) (Plus (Times (Num 5) (Div (Num 4) (Num 3))) (Times (Neg (Num 3)) (Num 4)))) (Num 10)
-
 
 <h3>Problem 2: Parsing expressions by hand</h3>
 
