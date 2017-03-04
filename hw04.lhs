@@ -187,11 +187,11 @@ a similar setup with `parseAFactor`, `parseAFactor'`, and
 `parseAFactor''`.
 
 > parseATerm :: [Token] -> Either String (AExp,[Token])
-> parseATerm ts = 
+> parseATerm ts =
 >   case parseAFactor ts of
 >     Right (f,ts) -> parseATerm' f ts
 >     Left e -> Left e
->       
+>
 > parseATerm' :: AExp -> [Token] -> Either String (AExp,[Token])
 > parseATerm' lhs [] = Right (lhs, [])
 > parseATerm' lhs (TPlus:ts) = parseATerm'' (Plus lhs) ts
@@ -206,29 +206,29 @@ parser. Adding niceties like this is called *syntactic sugar*.
 
 > parseATerm'' :: (AExp -> AExp) -> [Token] -> Either String (AExp,[Token])
 > parseATerm'' mk [] = Left $ "expected term after +/-"
-> parseATerm'' mk ts = 
+> parseATerm'' mk ts =
 >   case parseAFactor ts of
 >     Right (e,ts) -> parseATerm' (mk e) ts
 >     Left e -> Left e
-> 
+>
 > parseAFactor :: [Token] -> Either String (AExp,[Token])
 > parseAFactor ts =
 >   case parseAAtom ts of
 >     Right (lhs,ts) -> parseAFactor' lhs ts
 >     Left e -> Left e
->     
+>
 > parseAFactor' :: AExp -> [Token] -> Either String (AExp,[Token])
 > parseAFactor' lhs (TTimes:ts) = parseAFactor'' (Times lhs) ts
 > parseAFactor' lhs (TDiv:ts) = parseAFactor'' (Div lhs) ts
 > parseAFactor' lhs ts = Right (lhs, ts)
-> 
+>
 > parseAFactor'' :: (AExp -> AExp) -> [Token] -> Either String (AExp,[Token])
 > parseAFactor'' mk [] = Left $ "expected term after *"
-> parseAFactor'' mk ts = 
+> parseAFactor'' mk ts =
 >   case parseAAtom ts of
 >     Right (e,ts) -> parseAFactor' (mk e) ts
 >     Left e -> Left e
-> 
+>
 > parseAAtom :: [Token] -> Either String (AExp, [Token])
 > parseAAtom (TNum n:ts) = Right (Num n, ts)
 > parseAAtom (TId id:ts) = Right (Var id, ts)
@@ -239,36 +239,52 @@ parser. Adding niceties like this is called *syntactic sugar*.
 >     Left e -> Left e
 > parseAAtom ts = Left $ "expected numbers or parens, found: " ++ show ts
 >
-> isAExp :: Token -> Bool
-> isAExp (TNum _) = True
-> isAExp (TId _) = True
-> isAExp (TPlus) = True
-> isAExp (TMinus) = True
-> isAExp (TTimes) = True
-> isAExp (TDiv) = True
-> isAExp (TNeg) = True
-> isAExp (TLParen) = True
-> isAExp (TRParen) = True
-> isAExp _ = False
->
+
 > parseBTerm :: [Token] -> Either String (BExp,[Token])
-> parseBTerm ts = 
+> parseBTerm (TNot:ts) = case parseBFactor ts of
+>                            Left e       -> Left e
+>                            Right (f,ts) -> parseBTerm' (Not f) ts
+> parseBTerm ts =
 >   case parseBFactor ts of
 >     Right (f,ts) -> parseBTerm' f ts
 >     Left e -> Left e
->       
+
 > parseBTerm' :: BExp -> [Token] -> Either String (BExp,[Token])
 > parseBTerm' lhs [] = Right (lhs, [])
 > parseBTerm' lhs (TOr:ts) = parseBTerm'' (Or lhs) ts
 > parseBTerm' lhs ts = parseBFactor' lhs ts
->
+
+> pATerm' :: AExp -> [Token] -> Either String (BExp,[Token])
+> pATerm' lhs [] = Left $ "expected AExp after comparator"
+> pATerm' lhs (TLt:ts) = case parseATerm ts of
+>                        Left e              -> Left e
+>                        Right (aexp, terms) -> parseBTerm' (Lt lhs aexp) terms
+> pATerm' lhs (TGt:ts) = case parseATerm ts of
+>                        Left e              -> Left e
+>                        Right (aexp, terms) -> parseBTerm' (And (Not (Lt lhs aexp)) (Not (Equal lhs aexp))) terms
+> pATerm' lhs (TLtEq:ts) = case parseATerm ts of
+>                        Left e              -> Left e
+>                        Right (aexp, terms) -> parseBTerm' (Not (And (Not (Lt lhs aexp)) (Not (Equal lhs aexp)))) terms
+> pATerm' lhs (TGtEq:ts) = case parseATerm ts of
+>                        Left e              -> Left e
+>                        Right (aexp, terms) -> parseBTerm' (Not (Lt lhs aexp)) terms
+> pATerm' lhs (TEq:ts) = case parseATerm ts of
+>                        Left e              -> Left e
+>                        Right (aexp, terms) -> parseBTerm' (Equal lhs aexp) terms
+> pATerm' lhs (TNeq:ts) = case parseATerm ts of
+>                         Left e              -> Left e
+>                         Right (aexp, terms) -> parseBTerm' (Not(Equal lhs aexp)) terms
+> pATerm' lhs (TRParen:ts) = case pATerm' lhs ts of
+>                            Left e              -> Left e
+>                            Right (bexp, terms) -> parseBTerm' bexp (TRParen:terms)
+
 > parseBTerm'' :: (BExp -> BExp) -> [Token] -> Either String (BExp,[Token])
-> parseBTerm'' mk [] = Left $ "expected term after OR"
-> parseBTerm'' mk ts = 
+> parseBTerm'' mk [] = Left $ "expected term after +/-"
+> parseBTerm'' mk ts =
 >   case parseBFactor ts of
 >     Right (e,ts) -> parseBTerm' (mk e) ts
 >     Left e -> Left e
-> 
+>
 > parseBFactor :: [Token] -> Either String (BExp,[Token])
 > parseBFactor ts =
 >   case parseBAtom ts of
@@ -276,12 +292,13 @@ parser. Adding niceties like this is called *syntactic sugar*.
 >     Left e -> Left e
 >
 > parseBFactor' :: BExp -> [Token] -> Either String (BExp,[Token])
-> parseBFactor' lhs (TAnd:ts) = parseBFactor'' (And lhs) ts
+> parseBFactor' lhs [] = Right (lhs, [])
+> parseBFactor' lhs (TAnd:ts) = parseBTerm'' (And lhs) ts
 > parseBFactor' lhs ts = Right (lhs, ts)
-> 
+>
 > parseBFactor'' :: (BExp -> BExp) -> [Token] -> Either String (BExp,[Token])
-> parseBFactor'' mk [] = Left $ "expected term after AND"
-> parseBFactor'' mk ts = 
+> parseBFactor'' mk [] = Left $ "expected term after *"
+> parseBFactor'' mk ts =
 >   case parseBAtom ts of
 >     Right (e,ts) -> parseBFactor' (mk e) ts
 >     Left e -> Left e
@@ -289,31 +306,18 @@ parser. Adding niceties like this is called *syntactic sugar*.
 > parseBAtom :: [Token] -> Either String (BExp, [Token])
 > parseBAtom (TTrue:ts) = Right (Bool True, ts)
 > parseBAtom (TFalse:ts) = Right (Bool False, ts)
-> parseBAton tokens | isAExp (head tokens) = 
->   let (aexpTerms, rest) = span isAExp terms in
->   case parseATerm aexpTerms of
->     Right (e, _) =  
+> parseBAtom terms@(TNum n:ts) = case parseATerm terms of
+>                                         Left e               -> Left e
+>                                         Right (parsed, rest) -> pATerm' parsed rest
+> parseBAtom terms@(TId id:ts) = case parseATerm terms of
+>                                         Left e               -> Left e
+>                                         Right (parsed, rest) -> pATerm' parsed rest
+>
 > parseBAtom (TLParen:ts) =
->   case parseBTerm ts of
->     Right (e,TRParen:ts') -> Right (e,ts')
->     Right (_,ts) -> Left $ "expected right paren, found: " ++ show ts
->     Left e -> Left e
-> parseBAtom ts = Left $ "expected numbers or parens, found: " ++ show ts
->
->
->
->
->
->
->
->
->
->
->
->
->
->
->
+>  case parseBTerm ts of
+>    Right (e,TRParen:ts') -> Right (e,ts')
+>    Right (_,ts) -> Left $ "expected right paren, found: " ++ show ts
+>    Left e -> Left e
 
 To test this parser, play with the following "composed" function that
 combines the lexer and parser into one:
@@ -339,6 +343,12 @@ old school Pascal-style syntax. Here are some example programs:
 > pascalProg6 = "WHILE true DO SKIP END"
 > pascalProg7 = "IF x>=0 THEN y := 10 ELSE SKIP END;\ny := x + y;\nx := 5"
 > pascalProg8 = "IF x=46 THEN x := x + 1 END; oneArm := x * 2"
+> incompleteIf = "IF x=46 THEN"
+> bexpInStmt = "IF x=46 THEN x=46 ELSE x=46 END"
+> bexpInAExp = "IF x=(x=2) THEN x:=2 END"
+> noSemi = "IF x=46 THEN x := x + 1 END oneArm := x * 2"
+> unexpSemi = ";IF x=46 THEN x := x + 1 END"
+
 
 Note that some of these syntactic forms aren't *directly* supported in
 the AST (e.g., there's no way to directly say `>=` in `BExp`); you'll
@@ -353,15 +363,15 @@ of example programs to class so we can discuss them.
 You'll need to:
 
   1. Extend the `Token` type to account for other tokens (e.g., `WHILE`).
-  2. Change the lexer to find these new tokens. (Watch out for keyword/variable 
+  2. Change the lexer to find these new tokens. (Watch out for keyword/variable
      collisions!)
   3. Write a parser for boolean expressions. If you're wondering about
      precedence, think of `OR` like `+` and `AND` like `*`. For relations
      like `=` and `!=` and `>=`, they should be parsed under OR, e.g.,
-     `"x = y OR x < y AND y = z"` should parse as 
+     `"x = y OR x < y AND y = z"` should parse as
      `And (Or (Equal (Var "x") (Var "y")) (Lt (Var "x") (Var "y"))) (Equal (Var "y") (Var "z"))`.
   4. Write a parser for commands/statements.
-                
+
 You should *largely* be able to follow the pattern for arithmetic
 expressions established already, but you'll have to be creative in a
 few spots.
@@ -376,7 +386,40 @@ in two parts: one part for parsing a sequence of statements and one
 part for parsing an individual stement.
 
 > parseStmts :: [Token] -> Either String (Stmt,[Token])
-> parseStmts ts = undefined
+> parseStmts ((TId x):TDef:ts) = case parseATerm ts of
+>                                Left e             -> Left e
+>                                Right (aexp, rest) -> parseSeq (Assign x aexp) rest
+> parseStmts (TIf:ts) = case parseBTerm ts of
+>                       Left e                     -> Left e
+>                       Right (bexp, (TThen:rest)) -> case parseStmts rest of
+>                                                     Left e -> Left e
+>                                                     Right (stmt, TElse:rest') -> case parseStmts rest' of
+>                                                                                  Left e                     -> Left e
+>                                                                                  Right (stmt', TEnd:rest'') -> parseSeq (If bexp stmt stmt') rest''
+>                                                                                  Right (_, rest'')          -> Left "Expected 'END' after 'IF'"
+>                                                     Right (stmt, TEnd:rest')  -> parseSeq (If bexp stmt Skip) rest'
+>                                                     Right (_, rest')          -> Left "Expected 'ELSE' or 'END' after 'IF'"
+>                       Right (_, rest)            -> Left "Expected 'THEN' after 'IF'"
+> parseStmts (TWhile:ts) = case parseBTerm ts of
+>                          Left e                   -> Left e
+>                          Right (bexp, (TDo:rest)) -> case parseStmts rest of
+>                                                      Left e                     -> Left e
+>                                                      Right (stmt, (TEnd:rest))  -> parseSeq (While bexp stmt) rest
+>                                                      Right (_, res)             -> Left "Expected 'END' after 'WHILE'"
+>                          Right (_, (TDo:rest))    -> Left "Expected 'DO' after 'WHILE'"
+> parseStmts (TSkip:ts) = parseSeq Skip ts
+> parseStmts ts = Left $ "Invalid syntax, unexpected token at " ++ show ts
+>
+>
+>
+>
+> parseSeq :: Stmt -> [Token] -> Either String (Stmt, [Token])
+> parseSeq stmt (TSemi:rest) = case parseStmts rest of
+>                              Left e                -> Left e
+>                              Right (parsed, rest') -> Right (Seq stmt parsed, rest')
+> parseSeq stmt rest = Right (stmt, rest)
+>
+>
 >
 > pascalSyntax :: String -> Stmt
 > pascalSyntax = tryParse parseStmts
@@ -466,7 +509,7 @@ own.
 from the other primitive parsers:
 
 > eof' :: Parser ()
-> eof' = undefined
+> eof' = () <$ (ensure null lookahead)
 
 In general, we'll be careful to allow arbitrary whitespace at the
 beginnings of what we parse.
@@ -508,7 +551,9 @@ sure that it's the whole identifier. For example, `parse (kw "repeat")
 that the given string is in the list `keywords`).
 
 > kw :: String -> Parser String
-> kw s = undefined
+> kw s = loop s 
+>        where loop [] = pure []
+>              loop (c:cs) = (:) <$> satisfy (==c) <*> loop cs
 
 
 **HWHWHW** Now let's parse variables. A variable is (1) a string
