@@ -551,9 +551,11 @@ sure that it's the whole identifier. For example, `parse (kw "repeat")
 that the given string is in the list `keywords`).
 
 > kw :: String -> Parser String
-> kw s = loop s 
->        where loop [] = pure []
->              loop (c:cs) = (:) <$> satisfy (==c) <*> loop cs
+> kw s = Parser $ \t -> 
+>       case parse (str s) t of
+>         Just (s, ' ':xs) -> Just (s, ' ':xs)
+>         Just (s, "")     -> Just (s, "")
+>         _                -> Nothing  
 
 
 **HWHWHW** Now let's parse variables. A variable is (1) a string
@@ -561,8 +563,7 @@ starting with an alphabetical character followed by zero or more
 alphanumeric characters that (2) isn't a keyword.
 
 > var :: Parser String
-> var = undefined
-
+> var = ensure (not . isKeyword) $ ws *> some (satisfy isAlpha)
 
 A number is one or more digits. We can use `read :: Read a => String
 -> a` to read out an Int, since a `Read Int` instance is defined in
@@ -576,6 +577,25 @@ Haskell will complain---it doesn't know what you want to read!
 `aexp`, but you can call the rest whatever you want. Feel free to
 copy/paste most of it from lecture notes, but don't forget to add
 division! Please also encode subtraction using addition and negation.
+
+> spaces :: Parser ()
+> spaces = many (satisfy isSpace) *> pure ()
+
+> plus, minus, times :: Parser Char
+> plus = char '+'
+> minus = char '-'
+> times = char '*'
+
+> sub :: AExp -> AExp -> AExp
+> sub a b = Plus a (Neg b)
+
+> term, factor, atom :: Parser AExp
+> term   =     Plus <$> factor <* plus <*> term
+>         <|> factor
+> factor =     Times <$> atom <* times <*> factor 
+>         <|> atom
+> atom   =     Num <$> num 
+>         <|> (char '(' *> term <* char ')')
 
 > aexp :: Parser AExp
 > aexp = undefined
