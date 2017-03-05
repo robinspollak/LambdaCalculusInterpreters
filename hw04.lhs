@@ -551,11 +551,11 @@ sure that it's the whole identifier. For example, `parse (kw "repeat")
 that the given string is in the list `keywords`).
 
 > kw :: String -> Parser String
-> kw s = Parser $ \t -> 
+> kw s = Parser $ \t ->
 >       case parse (str s) t of
->         Just (s, ' ':xs) -> Just (s, ' ':xs)
->         Just (s, "")     -> Just (s, "")
->         _                -> Nothing  
+>         Just (s, x:xs) | not (isAlphaNum x) -> Just (s, x:xs)
+>         Just (s, "")                        -> Just (s, "")
+>         _                                   -> Nothing
 
 
 **HWHWHW** Now let's parse variables. A variable is (1) a string
@@ -591,7 +591,7 @@ division! Please also encode subtraction using addition and negation.
 > sub a b = Plus a (Neg b)
 
 > chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
-> chainl1 p sep = foldl (\acc (op,v) -> op acc v) <$> 
+> chainl1 p sep = foldl (\acc (op,v) -> op acc v) <$>
 >                p <*> many ((\op v -> (op,v)) <$> sep <*> p)
 
 > term', factor', neg', atom' :: Parser AExp
@@ -602,7 +602,7 @@ division! Please also encode subtraction using addition and negation.
 >  where mulop =     (char '*' *> pure Times)
 >                 <|> (char '/' *> pure Div)
 > neg' = Neg <$> (minus *> atom') <|> atom'
-> atom' = Num <$> num <|> (char '(' *> term' <* char ')')
+> atom' = Num <$> num <|> Var <$> var <|> (char '(' *> term' <* char ')')
 
 > aexp :: Parser AExp
 > aexp = term'
@@ -623,12 +623,51 @@ lower-case names, like `true` and `false`.
 > bexp_encoding_test1 = "x == y" -- Equal (Var x) (Var y)
 > bexp_encoding_test2 = "x <= y" -- Or (Equal (Var x) (Var y)) (Lt (Var x) (Var y))
 > bexp_encoding_test3 = "x != y" -- Not (Equal (Var x)) (Var y)
+> bexp_encoding_test4 = bexp_encoding_test1 ++ "||" ++ bexp_encoding_test2 ++ "||" ++ bexp_encoding_test3
+>
+> bTerm, lt, gt, eq, gtEq, ltEq, bAExp, bFactor, bNeg, bAtom :: Parser BExp
+> bTerm = bAExp <|> bFactor `chainl1` orOp
+>         where orOp = (str "||" *> pure Or)
+>
+>
+>
+> gt', gtEq', ltEq' :: AExp -> AExp -> BExp
+> gt' a b = And (Not (Lt a b)) (Not (Equal a b))
+> gtEq' a b = Not (Lt a b)
+> ltEq' a b = Not (gt' a b)
+> neq' a b = Not (Equal a b)
+>
+> lt = Lt <$> aexp <* char '<' <*> aexp
+> eq = Equal <$> aexp <* str "==" <*> aexp
+> neq = neq' <$> aexp <* str "!=" <*> aexp
+> gt = gt' <$> aexp <* char '>' <*> aexp
+> gtEq = gtEq' <$> aexp <* str ">=" <*> aexp
+> ltEq = ltEq' <$> aexp <* str "<=" <*> aexp
+> bAExp = lt <|> eq <|> gt <|> gtEq <|> ltEq <|> neq <|> bFactor
+>
+>
+> bFactor = bNeg `chainl1` andOp
+>  where andOp = (str "&&" *> pure And)
+>
+> bNeg =  Not <$> (char '!' *> bAtom) <|> bAtom
+>
+> bAtom = Bool <$> bool <|> (char '(' *> bTerm <* char ')')
+>
+> parseTrue, parseFalse, bool :: Parser Bool
+> parseTrue = Parser $ \s ->
+>             case parse (kw "true") s of
+>             Just ("true", rest) -> Just (True, rest)
+>             Nothing             -> Nothing
+> parseFalse = Parser $ \s ->
+>             case parse (kw "false") s of
+>             Just ("false", rest) -> Just (False, rest)
+>             Nothing              -> Nothing
+>
+> bool = parseTrue <|> parseFalse
+>
 >
 > bexp :: Parser BExp
-> bexp = Parser $ \s -> 
->              case parseBTerm (lexer s) of
->               Left e -> Nothing
->               Right(bexp, []) -> Just (bexp, "")
+> bexp = bTerm
 
 
 <h3>Problem 4: Parsing a la C</h3>
