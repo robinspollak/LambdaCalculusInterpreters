@@ -581,24 +581,31 @@ division! Please also encode subtraction using addition and negation.
 > spaces :: Parser ()
 > spaces = many (satisfy isSpace) *> pure ()
 
-> plus, minus, times :: Parser Char
+> plus, minus, times, division :: Parser Char
 > plus = char '+'
 > minus = char '-'
 > times = char '*'
+> division = char '/'
 
 > sub :: AExp -> AExp -> AExp
 > sub a b = Plus a (Neg b)
 
-> term, factor, atom :: Parser AExp
-> term   =     Plus <$> factor <* plus <*> term
->         <|> factor
-> factor =     Times <$> atom <* times <*> factor 
->         <|> atom
-> atom   =     Num <$> num 
->         <|> (char '(' *> term <* char ')')
+> chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+> chainl1 p sep = foldl (\acc (op,v) -> op acc v) <$> 
+>                p <*> many ((\op v -> (op,v)) <$> sep <*> p)
+
+> term', factor', neg', atom' :: Parser AExp
+> term' = factor' `chainl1` addop
+>  where addop =     (char '+' *> pure Plus)
+>                <|> (char '-' *> pure sub)
+> factor' = neg' `chainl1` mulop
+>  where mulop =     (char '*' *> pure Times)
+>                 <|> (char '/' *> pure Div)
+> neg' = Neg <$> (minus *> atom') <|> atom'
+> atom' = Num <$> num <|> (char '(' *> term' <* char ')')
 
 > aexp :: Parser AExp
-> aexp = undefined
+> aexp = term'
 
 
 **HWHWHW** Now let's define a `BExp` parser; we'll have to use the
@@ -618,7 +625,10 @@ lower-case names, like `true` and `false`.
 > bexp_encoding_test3 = "x != y" -- Not (Equal (Var x)) (Var y)
 >
 > bexp :: Parser BExp
-> bexp = undefined
+> bexp = Parser $ \s -> 
+>              case parseBTerm (lexer s) of
+>               Left e -> Nothing
+>               Right(bexp, []) -> Just (bexp, "")
 
 
 <h3>Problem 4: Parsing a la C</h3>
