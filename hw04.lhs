@@ -624,10 +624,14 @@ lower-case names, like `true` and `false`.
 > bexp_encoding_test2 = "x <= y" -- Or (Equal (Var x) (Var y)) (Lt (Var x) (Var y))
 > bexp_encoding_test3 = "x != y" -- Not (Equal (Var x)) (Var y)
 > bexp_encoding_test4 = bexp_encoding_test1 ++ "||" ++ bexp_encoding_test2 ++ "||" ++ bexp_encoding_test3
+> bexp_encoding_test5 = "5<6 && 6<7" -- Not (Equal (Var x)) (Var y)
+> bexp_encoding_test6 = "(x<(4+3) || 3+4<9 && 86>2)"
 >
 > bTerm, lt, gt, eq, gtEq, ltEq, bAExp, bFactor, bNeg, bAtom :: Parser BExp
-> bTerm = bAExp <|> bFactor `chainl1` orOp
+> bTerm = bFactor `chainl1` orOp
 >         where orOp = (str "||" *> pure Or)
+>
+>
 >
 >
 >
@@ -646,21 +650,23 @@ lower-case names, like `true` and `false`.
 > bAExp = lt <|> eq <|> gt <|> gtEq <|> ltEq <|> neq <|> bFactor
 >
 >
-> bFactor = bNeg `chainl1` andOp
+> bFactor = bNeg `chainl1` andOp <|> bNeg
 >  where andOp = (str "&&" *> pure And)
 >
 > bNeg =  Not <$> (char '!' *> bAtom) <|> bAtom
 >
-> bAtom = Bool <$> bool <|> (char '(' *> bTerm <* char ')')
+> bAtom = Bool <$> bool <|> (char '(' *> bTerm <* char ')') <|> bAExp
 >
 > parseTrue, parseFalse, bool :: Parser Bool
 > parseTrue = Parser $ \s ->
 >             case parse (kw "true") s of
 >             Just ("true", rest) -> Just (True, rest)
+>             Just (_, _)         -> error "wtf?"
 >             Nothing             -> Nothing
 > parseFalse = Parser $ \s ->
 >             case parse (kw "false") s of
 >             Just ("false", rest) -> Just (False, rest)
+>             Just (_,_)           -> error "wtf?"
 >             Nothing              -> Nothing
 >
 > bool = parseTrue <|> parseFalse
@@ -696,9 +702,47 @@ please write your own parsers within your pair).
 Let me reiterate that this is a *C-like* syntax, and not C. We just
 want a syntax that "feels" like C.
 
-> cSyntax :: Parser Stmt
-> cSyntax = undefined
-
+> cSyntax:: Parser Stmt
+> cSyntax = Seq <$> parseAssign <* semi <*> parseAssign
+>           <|> Seq <$> parseIf <* semi <*> parseAssign
+>           <|> parseIf
+>           <|> parseWhile
+>           <|> Seq <$> parseIf <*> parseAssign
+>           <|> parseAssign <* semi
+>           <|> parseAssign
+>
+> stmt :: Parser Stmt
+> stmt = ((parseSkip <|> parseAssign <|> parseIf <|> parseWhile) <* ws)
+> semi :: Parser Char
+> semi = char ';'
+>
+> brackets :: Parser a -> Parser a
+> brackets p = (char '{' *> p) <* char '}'
+> 
+> emptyBrackets :: Parser Stmt
+> emptyBrackets = ws *> char '{' *> ws *> char '}' *> (Parser $ \s -> Just (Skip, s))
+>
+>
+>
+> parseIf, parseWhile, parseAssign, parseSkip :: Parser Stmt
+> parseIf = If <$ if' <*> (parens bexp) <*> (brackets cSyntax <|> emptyBrackets) <* else' <*> (brackets cSyntax <|> emptyBrackets)
+>
+> parseAssign = Assign <$> var <* char '=' <*> aexp
+>
+> parseWhile = While <$ while <*> (parens bexp) <*> ((brackets cSyntax) <|> emptyBrackets)
+>
+>
+> parseSkip = emptyBrackets <|> parseSkip'
+>
+> parseSkip' = Parser $ \s -> 
+>              case parse eof' s of
+>              Just ((), "") -> Just (Skip, "")
+>              _             -> Nothing
+>
+> if', else', while :: Parser String
+> if' = kw "if"
+> else' = kw "else"
+> while = kw "while"
 
 Note: you will *not* be penalized for extra `Skip`s in your parsed
 output. If inserting a `Skip` here or there makes your life easier, go
