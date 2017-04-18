@@ -1,6 +1,7 @@
 module Hw06 where
 
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Applicative
 
 import Data.Array.IO
@@ -145,7 +146,7 @@ atom = Var <$> var <|> Num <$> num <|> parens term
 parseLet :: Parser LC
 parseLet = Let <$ kw "let" <*> var <* str "=" <*> term <* kw "in" <*> term
 
-data Error = ParseError String | AppliedNonFunction LC | UnboundVariables [VarName] | BadChurch LC
+data Error = ParseError String | AppliedNonFunction LC | UnboundVariables [VarName] | BadChurch LC deriving (Show)
 
 lcparser :: String -> Either Error LC
 lcparser s = case parse parseL s of
@@ -189,12 +190,17 @@ subst e@(Lambda v1 l) v2 sub | v1 == v2 = e
                              | otherwise = Lambda v1 $ subst l v2 sub
 subst (Let v1 l1 l2) v2 sub     = Let v1 (subst l1 v2 sub) (subst l2 v2 sub)
 
-convertChurch :: LC -> Either Error Int
-convertChurch (Var x) = 0
-convertChurch e@(Lambda x (Lambda y (Var z))) | x==z = Left $ BadChurch e
-convertChurch (Lambda x (Lambda y body)) = convertChurch body
-convertChurch (App (Var x) body) = 1 + convertChurch body
-convertChurch e  = Left $ BadChurch e
+convertChurch' :: LC -> Either Error Int
+convertChurch' (Var x) = Right $ 0
+convertChurch' e@(Lambda x (Lambda y (Var z))) | x==z = Left $ BadChurch e
+convertChurch' (Lambda x (Lambda y body)) = convertChurch' body
+convertChurch' (App (Var x) body) = (1+) <$> convertChurch' body
+convertChurch' e  = Left $ BadChurch e
+
+convertChurch :: LC -> Either Error LC
+convertChurch x = do
+                  churched <- convertChurch' x
+                  Right $ Num churched
 
 convertInt :: Int -> LC
 convertInt n = Lambda "s" (Lambda "z" (convertHelp n))
@@ -248,32 +254,31 @@ compilerOpts argv = case getOpt Permute options argv of
 
 helpMessage = "interp [OPTIONS] FILE (defaults to -, for stdin) \n lambda calculus interpreter \n\n -c --check    Check scope \n -n --numeral  Convert final Church numeral to a number \n -? --help     Display help message"
 
--- main :: IO ()
--- main = do
---        args <- getArgs
---        opts <- compilerOpts args
---        if (Help `elem` fst opts) then putStrLn helpMessage else case opts of
---                     (flags, [])    -> getContents >>= (handleStdIn flags) >>= putStrLn
---                     (flags, ["-"]) -> getContents >>= (handleStdIn flags) >>= putStrLn
---                     (flags, [fp])  -> ((interpFile flags fp) >>= putStrLn)
---                     _              -> fail "Please provide a file or data on stdin for us to interpret"
+main :: IO ()
+main = do
+       args <- getArgs
+       opts <- compilerOpts args
+       if (Help `elem` fst opts) then putStrLn helpMessage else case opts of
+                    (flags, [])    -> ((handleInput flags <$> getContents)) >>= convertToIO >>= putStrLn
+                    (flags, ["-"]) -> ((handleInput flags <$> getContents)) >>= convertToIO >>= putStrLn
+                    (flags, [fp])  -> ((handleInput flags) <$> (readFile fp)) >>= convertToIO >>= putStrLn
+                    _              -> fail "Please provide a file or data on stdin for us to interpret"
 
--- interpFile :: [Flag] -> String -> Either Error String
--- interpFile flags fp = do
---                       file <- readFile fp
---                       let parsed = intermediateHandling flags file
---                       interped <- interp parsed
---                       let interped' = if Numeral `elem` flags then show (convertChurch (lcparser interped)) else interped
---                       return interped'
+convertToIO :: Either Error String -> IO String
+convertToIO a = do
+                string <- case a of
+                          (Left e) -> fail $ show e
+                          (Right s) -> return s
+                return string
 
-handleStdIn :: [Flag] -> String -> Either Error LC
-handleStdIn flags inp = do
-                        parsed   <- intermediateHandling flags inp
-                        interped <- interp parsed
-                        interped'<- if Numeral `elem` flags
-                                    then convertChurch interped
-                                    else interped
-                        return interped'
+handleInput :: [Flag] -> String -> Either Error String
+handleInput flags inp = do
+                        parsed    <- intermediateHandling flags inp
+                        interped  <- interp parsed
+                        interped' <- if Numeral `elem` flags
+                                     then convertChurch interped
+                                     else return interped
+                        return (show interped')
 
 
 intermediateHandling :: [Flag] -> String -> Either Error LC
