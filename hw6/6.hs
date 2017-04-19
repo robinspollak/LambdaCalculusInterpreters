@@ -1,27 +1,21 @@
 module Hw06 where
 
-import Control.Monad
-import Control.Monad.IO.Class
+import Control.Monad()
+import Control.Monad.IO.Class()
 import Control.Applicative
 
-import Data.Array.IO
+import Data.Array.IO()
 import Data.List.Split
 import Data.List
 import Data.Char
 import qualified Data.Set as Set
 import Data.Set (Set)
-import qualified Data.Map as Map
-import Data.Map (Map(..),(!))
-import Data.Maybe ( fromMaybe )
+import qualified Data.Map as Map()
+import Data.Map()
 
 import System.Environment
-import System.Exit
-import System.IO
-import System.Random
+import System.IO()
 import System.Console.GetOpt
-
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
 
 newtype Parser a = Parser { parse :: String -> Maybe (a,String) }
 
@@ -36,7 +30,7 @@ instance Applicative Parser where
             Nothing -> Nothing
 
 instance Alternative Parser where
-    empty = Parser $ \s -> Nothing
+    empty = Parser $ \_ -> Nothing
     l <|> r = Parser $ \s -> parse l s <|> parse r s
 
 ensure :: (a -> Bool) -> Parser a -> Parser a
@@ -99,7 +93,7 @@ chainl1 p sep = foldl (\acc (op,v) -> op acc v) <$>
 
 type VarName = String
 
-data LC = Var VarName | App LC LC | Lambda VarName LC | Let VarName LC LC | Num Int
+data LC = Var VarName | App LC LC | Lambda VarName LC | Let VarName LC LC | Num Int | Succ
 
 instance Show LC where
   show = showTerm
@@ -114,14 +108,16 @@ showTerm x = showFactor x
 
 showLambda :: LC -> [Char]
 showLambda (Lambda v expr) = case expr of
-                             e@(Lambda v' expr) -> v ++ " " ++ showLambda e
-                             x                  -> v ++ ". " ++ showTerm x
+                             e@(Lambda _ _) -> v ++ " " ++ showLambda e
+                             x              -> v ++ ". " ++ showTerm x
+showLambda _               = error "how'd u end up here mayne?"
 
 showFactor :: LC -> [Char]
-showFactor e@(Lambda v expr) = "lambda " ++ showLambda e
+showFactor e@(Lambda _ _) = "lambda " ++ showLambda e
 showFactor x = showAtom x
 
 showAtom :: LC -> [Char]
+showAtom (Succ)  = "succ"
 showAtom (Var x) = x
 showAtom (Num n) = show n
 showAtom x = parens' $ showTerm x
@@ -138,69 +134,72 @@ factor = genLambdas <$ kw "lambda" <*> some var <* char '.' <*> term
 
 
 genLambdas :: [VarName] -> LC -> LC
-genLambdas [x] lc = Lambda x lc
+genLambdas [] _      = error "how'd u get here, fam?"
+genLambdas [x] lc    = Lambda x lc
 genLambdas (x:xs) lc = Lambda x (genLambdas xs lc)
+
 
 atom = Var <$> var <|> Num <$> num <|> parens term
 
 parseLet :: Parser LC
 parseLet = Let <$ kw "let" <*> var <* str "=" <*> term <* kw "in" <*> term
 
-data Error = ParseError String | AppliedNonFunction LC | UnboundVariables [VarName] | BadChurch LC deriving (Show)
+data Error = ParseError String | AppliedNonFunction LC | UnboundVariables [VarName] | BadChurch LC
+
+instance Show Error where
+  show (ParseError s)          = "Parse error: failed to parse :" ++ s ++ "."
+  show (AppliedNonFunction lc) = "Function application error: Attempted application of a non-function, tried to apply " ++ show lc ++ "."
+  show (UnboundVariables vars) = "Unbound variables error: " ++ (intercalate ", " vars) ++ " are unbound." 
+  show (BadChurch lc)          = "Church conversion error: failed while trying to convert " ++ show lc ++ " to a church numeral."
 
 lcparser :: String -> Either Error LC
 lcparser s = case parse parseL s of
              Just (x, "")  -> Right x
-             Just (x, str) -> Left $ ParseError str
+             Just (_, str) -> Left $ ParseError str
              Nothing       -> Left $ ParseError s
 
 interp :: LC -> Either Error LC
-interp ast = (evalCBN ast) >>= simplify
+interp = evalCBV
 
-evalCBN :: LC -> Either Error LC
-evalCBN (Var x) = Right $ Var x
-evalCBN (Lambda x e) = Right $ Lambda x e
-evalCBN (Let v e1 e2) = evalCBN (subst e2 v e1)
-evalCBN (App e1 e2) = case evalCBN e1 of
-                       (Right (Lambda x e')) -> evalCBN (subst e' x e2)
-                       (Left e)              -> Left e
-                       (Right x)             -> Left $ AppliedNonFunction x
+evalCBV :: LC -> Either Error LC
+evalCBV (Var x)       = Left $ UnboundVariables [x]
+evalCBV (Num n)       = Right $ Num n
+evalCBV (Lambda x e)  = Right $ Lambda x e
+evalCBV (Let v e1 e2) = case evalCBV e1 of 
+                          Right (Var v) -> evalCBV $ subst e2 v (Var v)
+                          Right e1'     -> evalCBV $ subst e2 v e1'
+                          Left e        -> Left e
+evalCBV Succ               = Right Succ
+evalCBV (App Succ (Num n)) = Right $ Num (n+1)
+evalCBV (App Succ x)       = evalCBV =<< ((App Succ) <$> evalCBV x)
+evalCBV (App e1 e2)   = case evalCBV e1 of
+                         (Right (Lambda x e')) -> case evalCBV e2 of
+                                                  Right (Var v) -> evalCBV $ subst e' x (Var v)
+                                                  Right e2'     -> evalCBV $ subst e' x e2'
+                                                  Left e        -> Left e
+                         (Right x)             -> Left $ AppliedNonFunction x
+                         (Left e)              -> Left e
 
-simplify :: LC -> Either Error LC
-simplify (Var x) = Right $ Var x
-simplify (Lambda x e) = do
-                        exp <- simplify e
-                        Right $ (Lambda x) exp
-simplify (Let v e1 e2) = simplify (subst e2 v e1)
-simplify (App e1 e2) =  case evalCBN e1 of
-                        (Right (Lambda x e')) -> do
-                                                 exp2 <- simplify e2
-                                                 simplify (subst e' x exp2)
-                        (Left e)              -> Left e
-                        (Right exp)           -> do
-                                                 exp1 <- simplify e1
-                                                 exp2 <- simplify e2
-                                                 Right $ App exp1 exp2
 
 subst :: LC -> VarName -> LC -> LC
-subst (Var e) v sub | e == v    = sub
-                    | otherwise = Var e
-subst (App l1 l2) v sub         = App (subst l1 v sub) (subst l2 v sub)
-subst e@(Lambda v1 l) v2 sub | v1 == v2 = e
-                             | otherwise = Lambda v1 $ subst l v2 sub
-subst (Let v1 l1 l2) v2 sub     = Let v1 (subst l1 v2 sub) (subst l2 v2 sub)
+subst (Var e) v sub          | e == v     = sub
+                             | otherwise  = Var e
+subst (App l1 l2) v sub                   = App (subst l1 v sub) (subst l2 v sub)
+subst Succ _ _                            = Succ
+subst (Num x) _ _                         = Num x
+subst e@(Lambda v1 l) v2 sub | v1 == v2   = e
+                             | otherwise  = Lambda v1 $ subst l v2 sub
+subst (Let v1 l1 l2) v2 sub  | v1 == v2   = Let v1 l1 (subst l2 v2 sub)
+                             | otherwise  = Let v1 (subst l1 v2 sub) (subst l2 v2 sub)
 
-convertChurch' :: LC -> Either Error Int
-convertChurch' (Var x) = Right $ 0
-convertChurch' e@(Lambda x (Lambda y (Var z))) | x==z = Left $ BadChurch e
-convertChurch' (Lambda x (Lambda y body)) = convertChurch' body
-convertChurch' (App (Var x) body) = (1+) <$> convertChurch' body
-convertChurch' e  = Left $ BadChurch e
 
-convertChurch :: LC -> Either Error LC
-convertChurch x = do
-                  churched <- convertChurch' x
-                  Right $ Num churched
+convertChurch :: LC -> Either Error Int
+convertChurch x = case churched of
+                   Right (Num n) -> Right n
+                   Right Succ    -> Right 1
+                   Right x       -> Left $ BadChurch x
+                   Left e        -> Left e
+                  where churched = evalCBV $ App (App x Succ) (Num 0)
 
 convertInt :: Int -> LC
 convertInt n = Lambda "s" (Lambda "z" (convertHelp n))
@@ -208,6 +207,7 @@ convertInt n = Lambda "s" (Lambda "z" (convertHelp n))
                  convertHelp n = App (Var "s") $ convertHelp (n - 1)
 
 convertInts :: LC -> Either Error LC
+convertInts Succ    = Right Succ
 convertInts (Num n) = Right $ convertInt n
 convertInts (Var x) = Right $ Var x
 convertInts (Lambda v e) = do
@@ -223,13 +223,17 @@ convertInts (Let v e1 e2) = do
                             Right $ Let v exp1 exp2
 
 bv :: LC -> (Set VarName)
-bv (Var x) = Set.empty
+bv (Var _) = Set.empty
+bv Succ    = Set.empty
+bv (Num _) = Set.empty
 bv (Lambda x e) = Set.union (Set.singleton x) (bv e)
-bv (Let l e1 e2) = Set.union (bv e1) (bv e2)
+bv (Let _ e1 e2) = Set.union (bv e1) (bv e2)
 bv (App e1 e2) = Set.union (bv e1) (bv e2)
 
 allVars :: LC -> (Set VarName)
 allVars (Var x) = Set.singleton x
+allVars Succ    = Set.empty
+allVars (Num _) = Set.empty
 allVars (Lambda x e) = Set.union (Set.singleton x) (allVars e)
 allVars (Let l e1 e2) = Set.difference (Set.union (allVars e1) (allVars e2)) (Set.singleton l)
 allVars (App e1 e2) = Set.union (allVars e1) (allVars e2)
@@ -241,9 +245,9 @@ data Flag = Help | Numeral | Check deriving (Show, Eq)
 
 options :: [OptDescr Flag]
 options = [
-            Option "?" [] (NoArg Help) "help message",
-            Option "n" [] (NoArg Numeral) "church numeral conversion",
-            Option "c" [] (NoArg Check) "check for unbound variables"
+            Option "?" ["help"] (NoArg Help) "help message",
+            Option "n" ["numeral"] (NoArg Numeral) "church numeral conversion",
+            Option "c" ["check"] (NoArg Check) "check for unbound variables"
           ]
 
 compilerOpts :: [String] -> IO ([Flag], [String])
@@ -275,11 +279,9 @@ handleInput :: [Flag] -> String -> Either Error String
 handleInput flags inp = do
                         parsed    <- intermediateHandling flags inp
                         interped  <- interp parsed
-                        interped' <- if Numeral `elem` flags
-                                     then convertChurch interped
-                                     else return interped
-                        return (show interped')
-
+                        if Numeral `elem` flags
+                        then show <$> (convertChurch interped)
+                        else return $ show interped
 
 intermediateHandling :: [Flag] -> String -> Either Error LC
 intermediateHandling flags inp = do
