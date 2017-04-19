@@ -140,7 +140,7 @@ parseLet = Let <$ kw "let" <*> var <* str "=" <*> term <* kw "in" <*> term
 data Error = ParseError String | AppliedNonFunction LC | UnboundVariables [VarName] | BadChurch LC
 
 instance Show Error where
-  show (ParseError s)          = "Parse error: failed to parse :" ++ s ++ "."
+  show (ParseError s)          = "Parse error: failed to parse: " ++ s ++ "."
   show (AppliedNonFunction lc) = "Function application error: Attempted application of a non-function, tried to apply " ++ show lc ++ "."
   show (UnboundVariables vars) = "Unbound variables error: " ++ (intercalate ", " vars) ++ " are unbound." 
   show (BadChurch lc)          = "Church conversion error: failed while trying to convert " ++ show lc ++ " to a church numeral."
@@ -164,12 +164,13 @@ evalCBV (Let v e1 e2) = case evalCBV e1 of
                           Left e        -> Left e
 evalCBV Succ               = Right Succ
 evalCBV (App Succ (Num n)) = Right $ Num (n+1)
-evalCBV (App Succ x)       = evalCBV =<< ((App Succ) <$> evalCBV x)
+evalCBV (App Succ x)       = evalCBV =<< (App Succ) <$> (evalCBV x)
 evalCBV (App e1 e2)   = case evalCBV e1 of
                          (Right (Lambda x e')) -> case evalCBV e2 of
                                                   Right (Var v) -> evalCBV $ subst e' x (Var v)
                                                   Right e2'     -> evalCBV $ subst e' x e2'
                                                   Left e        -> Left e
+                         (Right Succ)          -> evalCBV =<< (App Succ) <$> (evalCBV e2)
                          (Right x)             -> Left $ AppliedNonFunction x
                          (Left e)              -> Left e
 
