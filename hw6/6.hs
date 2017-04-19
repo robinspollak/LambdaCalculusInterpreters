@@ -39,11 +39,6 @@ ensure p parser = Parser $ \s ->
      Nothing -> Nothing
      Just (a,s') -> if p a then Just (a,s') else Nothing
 
-lookahead :: Parser (Maybe Char)
-lookahead = Parser f
-  where f [] = Just (Nothing,[])
-        f (c:s) = Just (Just c,c:s)
-
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy p = Parser f
   where f [] = Nothing
@@ -132,12 +127,10 @@ term = parseLet
 factor = genLambdas <$ kw "lambda" <*> some var <* char '.' <*> term
          <|> atom
 
-
 genLambdas :: [VarName] -> LC -> LC
 genLambdas [] _      = error "how'd u get here, fam?"
 genLambdas [x] lc    = Lambda x lc
 genLambdas (x:xs) lc = Lambda x (genLambdas xs lc)
-
 
 atom = Var <$> var <|> Num <$> num <|> parens term
 
@@ -180,7 +173,6 @@ evalCBV (App e1 e2)   = case evalCBV e1 of
                          (Right x)             -> Left $ AppliedNonFunction x
                          (Left e)              -> Left e
 
-
 subst :: LC -> VarName -> LC -> LC
 subst (Var e) v sub          | e == v     = sub
                              | otherwise  = Var e
@@ -191,7 +183,6 @@ subst e@(Lambda v1 l) v2 sub | v1 == v2   = e
                              | otherwise  = Lambda v1 $ subst l v2 sub
 subst (Let v1 l1 l2) v2 sub  | v1 == v2   = Let v1 l1 (subst l2 v2 sub)
                              | otherwise  = Let v1 (subst l1 v2 sub) (subst l2 v2 sub)
-
 
 convertChurch :: LC -> Either Error Int
 convertChurch x = case churched of
