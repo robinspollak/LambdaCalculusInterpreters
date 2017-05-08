@@ -37,33 +37,33 @@ convertInts :: LC -> Either Error LC
 convertInts Succ    = Right Succ
 convertInts (Num n) = Right $ convertInt n
 convertInts (Var x) = Right $ Var x
-convertInts (Lambda v e) = do
-                           exp <- convertInts e
-                           Right $ Lambda v exp
-convertInts (App e1 e2) = do
-                          exp1 <- convertInts e1
-                          exp2 <- convertInts e2
-                          Right $ App exp1 exp2
-convertInts (Let v e1 e2) = do
-                            exp1 <- convertInts e1
-                            exp2 <- convertInts e2
-                            Right $ Let v exp1 exp2
+convertInts (Lambda v lc) = do
+                            lc' <- convertInts lc
+                            Right $ Lambda v lc'
+convertInts (App lc1 lc2) = do
+                            lc1' <- convertInts lc1
+                            lc2' <- convertInts lc2
+                            Right $ App lc1' lc2'
+convertInts (Let v lc1 lc2) = do
+                              lc1' <- convertInts lc1
+                              lc2' <- convertInts lc2
+                              Right $ Let v lc1' lc2'
 
 bv :: LC -> (Set VarName)
 bv (Var _) = Set.empty
 bv Succ    = Set.empty
 bv (Num _) = Set.empty
-bv (Lambda x e) = Set.union (Set.singleton x) (bv e)
-bv (Let _ e1 e2) = Set.union (bv e1) (bv e2)
-bv (App e1 e2) = Set.union (bv e1) (bv e2)
+bv (Lambda x lc)   = Set.union (Set.singleton x) (bv lc)
+bv (Let _ lc1 lc2) = Set.union (bv lc1) (bv lc2)
+bv (App lc1 lc2)   = Set.union (bv lc1) (bv lc2)
 
 allVars :: LC -> (Set VarName)
 allVars (Var x) = Set.singleton x
 allVars Succ    = Set.empty
 allVars (Num _) = Set.empty
-allVars (Lambda x e) = Set.union (Set.singleton x) (allVars e)
-allVars (Let l e1 e2) = Set.difference (Set.union (allVars e1) (allVars e2)) (Set.singleton l)
-allVars (App e1 e2) = Set.union (allVars e1) (allVars e2)
+allVars (Lambda x lc)   = Set.union (Set.singleton x) (allVars lc)
+allVars (Let l lc1 lc2) = Set.difference (Set.union (allVars lc1) (allVars lc2)) (Set.singleton l)
+allVars (App lc1 lc2)   = Set.union (allVars lc1) (allVars lc2)
 
 ubv :: LC -> (Set VarName)
 ubv lc = Set.difference (allVars lc) (bv lc)

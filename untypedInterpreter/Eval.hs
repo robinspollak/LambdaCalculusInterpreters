@@ -14,30 +14,30 @@ interp = evalCBV
 evalCBV :: LC -> Either Error LC
 evalCBV (Var x)       = Left $ UnboundVariables [x]
 evalCBV (Num n)       = Right $ Num n
-evalCBV (Lambda x e)  = Right $ Lambda x e
-evalCBV (Let v e1 e2) = case evalCBV e1 of
-                          Right (Var v) -> evalCBV $ subst e2 v (Var v)
-                          Right e1'     -> evalCBV $ subst e2 v e1'
-                          Left e        -> Left e
+evalCBV (Lambda x lc)  = Right $ Lambda x lc
+evalCBV (Let v lc1 lc2) = case evalCBV lc1 of
+                            Right (Var v)  -> evalCBV $ subst lc2 v (Var v)
+                            Right lc1'     -> evalCBV $ subst lc2 v lc1'
+                            Left e         -> Left e
 evalCBV Succ               = Right Succ
 evalCBV (App Succ (Num n)) = Right $ Num (n+1)
 evalCBV (App Succ x)       = evalCBV =<< (App Succ) <$> (evalCBV x)
-evalCBV (App e1 e2)   = case evalCBV e1 of
-                         (Right (Lambda x e')) -> case evalCBV e2 of
-                                                  Right (Var v) -> evalCBV $ subst e' x (Var v)
-                                                  Right e2'     -> evalCBV $ subst e' x e2'
-                                                  Left e        -> Left e
-                         (Right Succ)          -> evalCBV =<< (App Succ) <$> (evalCBV e2)
-                         (Right x)             -> Left $ AppliedNonFunction x
-                         (Left e)              -> Left e
+evalCBV (App lc1 lc2)   = case evalCBV lc1 of
+                           (Right (Lambda x lc')) -> case evalCBV lc2 of
+                                                       Right (Var v)  -> evalCBV $ subst lc' x (Var v)
+                                                       Right lc2'     -> evalCBV $ subst lc' x lc2'
+                                                       Left e         -> Left e
+                           (Right Succ)           -> evalCBV =<< (App Succ) <$> (evalCBV lc2)
+                           (Right x)              -> Left $ AppliedNonFunction x
+                           (Left e)               -> Left e
 
 subst :: LC -> VarName -> LC -> LC
-subst (Var e) v sub          | e == v     = sub
-                             | otherwise  = Var e
-subst (App l1 l2) v sub                   = App (subst l1 v sub) (subst l2 v sub)
-subst Succ _ _                            = Succ
-subst (Num x) _ _                         = Num x
-subst e@(Lambda v1 l) v2 sub | v1 == v2   = e
-                             | otherwise  = Lambda v1 $ subst l v2 sub
-subst (Let v1 l1 l2) v2 sub  | v1 == v2   = Let v1 l1 (subst l2 v2 sub)
-                             | otherwise  = Let v1 (subst l1 v2 sub) (subst l2 v2 sub)
+subst (Var e) v sub             | e == v     = sub
+                                | otherwise   = Var e
+subst (App lc1 lc2) v sub                    = App (subst lc1 v sub) (subst lc2 v sub)
+subst Succ _ _                               = Succ
+subst (Num x) _ _                            = Num x
+subst lc@(Lambda v1 lc1) v2 sub | v1 == v2   = lc
+                                | otherwise  = Lambda v1 $ subst lc1 v2 sub
+subst (Let v1 lc1 lc2) v2 sub   | v1 == v2   = Let v1 lc1 (subst lc2 v2 sub)
+                                | otherwise  = Let v1 (subst lc1 v2 sub) (subst lc2 v2 sub)
