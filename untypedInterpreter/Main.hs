@@ -90,9 +90,9 @@ main = do
        args <- getArgs
        opts <- compilerOpts args
        if (Help `elem` fst opts) then putStrLn helpMessage else case opts of
-                    (flags, [])    -> ((handleInput flags <$> getContents)) >>= convertToIO >>= putStrLn
-                    (flags, ["-"]) -> ((handleInput flags <$> getContents)) >>= convertToIO >>= putStrLn
-                    (flags, [fp])  -> ((handleInput flags) <$> (readFile fp)) >>= convertToIO >>= putStrLn
+                    (flags, [])    -> handleInput flags <$> getContents >>= convertToIO >>= putStrLn
+                    (flags, ["-"]) -> handleInput flags <$> getContents >>= convertToIO >>= putStrLn
+                    (flags, [fp])  -> handleInput flags <$> (readFile fp) >>= convertToIO >>= putStrLn
                     _              -> fail "Please provide a file or data on stdin for us to interpret"
 
 convertToIO :: Either Error String -> IO String
