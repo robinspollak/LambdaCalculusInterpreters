@@ -51,4 +51,4 @@ let rec x : int = x + 1 in x
 ```
 This will yield a recursion error, as `x` is not a function.
 # Contributions
-Suggestions, comments, issues, and pull requests are all encouraged! I can be reached at (robin@pollak.io)[mailto:robin@pollak.io] and my website can be found (here)[http://robin.pollak.io]
+Suggestions, comments, issues, and pull requests are all encouraged! I can be reached at [robin@pollak.io](mailto:robin@pollak.io) and my website can be found [here](http://robin.pollak.io)
