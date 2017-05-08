@@ -13,13 +13,14 @@ import System.Environment
 import System.IO()
 import System.Console.GetOpt
 
-import Parse
 import Data
+import ParseBoilerplate
+import Parse
 import Type
 import Eval
 
 lcparser :: String -> Either Error LC
-lcparser s = case parse Parse.term s of
+lcparser s = case parse Parse.parseL s of
              Just (x, "")  -> Right x
              Just (_, str) -> Left $ ParseError str
              Nothing       -> Left $ ParseError s
@@ -48,9 +49,9 @@ main = do
        args <- getArgs
        opts <- compilerOpts args
        if (Help `elem` fst opts) then putStrLn helpMessage else case opts of
-                    (flags, [])    -> ((handleInput flags <$> getContents)) >>= convertToIO >>= putStrLn
-                    (flags, ["-"]) -> ((handleInput flags <$> getContents)) >>= convertToIO >>= putStrLn
-                    (flags, [fp])  -> ((handleInput flags) <$> (readFile fp)) >>= convertToIO >>= putStrLn
+                    (flags, [])    -> handleInput flags <$> getContents >>= convertToIO >>= putStrLn
+                    (flags, ["-"]) -> handleInput flags <$> getContents >>= convertToIO >>= putStrLn
+                    (flags, [fp])  -> handleInput flags <$> (readFile fp) >>= convertToIO >>= putStrLn
                     _              -> fail "Please provide a file or data on stdin for us to interpret"
 
 convertToIO :: Either Error String -> IO String
