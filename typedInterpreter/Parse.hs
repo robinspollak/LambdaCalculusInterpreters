@@ -33,9 +33,8 @@ sixthLevel = UnOpLC <$> parseUnOp <*> atom
              <|> foldl1 App <$> some atom
              <|> atom
 
-atom  = (\arg contents -> Lambda (fst arg) (snd arg) contents) <$ kw "lambda" <*> parseVarTypePair <* char '.' <*> topLevel
-        <|> genLambdas <$ kw "lambda" <*> some (parens parseVarTypePair) <* char '.' <*> topLevel
-        <|> If <$ kw "if" <*> topLevel <* kw "then" <*> topLevel <* kw "else" <*> topLevel
+atom  = parseLambdas
+        <|> parseIf
         <|> parseAscr
         <|> Var <$> var
         <|> Num <$> num
@@ -59,10 +58,6 @@ parseTypeAtom = TBool <$ kw "bool"
 parseVarTypePair :: Parser (VarName, Type)
 parseVarTypePair = (\name typ -> (name, typ)) <$> var <* char ':' <*> parseType 
 
-
-parseBinOp :: Parser LC
-parseBinOp = chainl1 atom parseBinOp'
-
 parseComparator :: Parser (LC -> LC -> LC)
 parseComparator = BinOpLC Equ <$ str "=="
                   <|> neqHelp <$ str "/="
@@ -79,35 +74,21 @@ parseTimesDiv :: Parser (LC -> LC -> LC)
 parseTimesDiv = BinOpLC Times <$ str "*"
                 <|> BinOpLC Div <$ str "/"
 
-parseBinOp' :: Parser (LC -> LC -> LC)
-parseBinOp' = BinOpLC And <$ str "and"
-              <|> BinOpLC Times <$ str "*"
-              <|> BinOpLC Div <$ str "/"
-              <|> BinOpLC Or <$ kw "or"
-              <|> BinOpLC Plus <$ str "+"
-              <|> BinOpLC Minus <$ str "-"
-              <|> BinOpLC Equ <$ str "=="
-              <|> neqHelp <$ str "/="
-              <|> gtEqHelp <$ str ">="
-              <|> ltEqHelp <$ str "<="
-              <|> BinOpLC Lt <$ str "<"
-              <|> gtHelp <$ str ">"
-
-
 gtHelp, gtEqHelp, ltEqHelp, neqHelp :: LC -> LC -> LC
 gtHelp first second = BinOpLC And (UnOpLC Not (BinOpLC Lt first second)) (UnOpLC Not (BinOpLC Equ first second))
-
 gtEqHelp first second = UnOpLC Not (BinOpLC Lt first second)
-
 ltEqHelp first second = BinOpLC Or (BinOpLC Lt first second) (BinOpLC Equ first second)
-
 neqHelp first second = UnOpLC Not (BinOpLC Equ first second)
+
+parseIf = If <$ kw "if" <*> topLevel <* kw "then" <*> topLevel <* kw "else" <*> topLevel
+
+parseLambdas = (\arg contents -> Lambda (fst arg) (snd arg) contents) <$ kw "lambda" <*> parseVarTypePair <* char '.' <*> topLevel
+               <|> genLambdas <$ kw "lambda" <*> some (parens parseVarTypePair) <* char '.' <*> topLevel
 
 genLambdas :: [(VarName, Type)] -> LC -> LC
 genLambdas [] _      = error "how'd u get here, fam?"
 genLambdas [x] lc    = Lambda (fst x) (snd x) lc
 genLambdas (x:xs) lc = Lambda (fst x) (snd x) (genLambdas xs lc)
-
 
 parseAscr :: Parser LC
 parseAscr = Ascr <$ char '(' <*> topLevel <* char ':' <*> parseType <* char ')'
